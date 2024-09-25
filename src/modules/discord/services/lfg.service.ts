@@ -26,7 +26,10 @@ export class LfgService {
     })
     private async createLfg(@Context() [message]: SlashCommandContext, @Options() options: CreateLFGDTO) {
         if (!this.checkPermissions(message.member as GuildMember)) {
-            return message.reply("You are not authorized to use this command");
+            return message.reply("You are not authorized to use this command").then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+              })
+              .catch(() => {});
         }
         let role = await this.database.getSettingByKey("lfg_role");
         let channel = await this.database.getSettingByKey("lfg_channel");
@@ -37,14 +40,10 @@ export class LfgService {
         let channelObj = message.guild.channels.cache.get(channel.value) as ForumChannel;
         let emb = this.createLFGEmbed(options.type, options.message, u);
         let forumMessage: GuildForumThreadCreateOptions = {
-
             message: {
                 embeds: [emb],
-
             },
-
             name: `${u.displayName} - ${options.type}`,
-
         };
         let tags = channelObj.availableTags;
         let tag = tags.find((t) => t.name == "LFG");
@@ -52,7 +51,10 @@ export class LfgService {
         t.setAppliedTags([tag.id]);
         t.members.add(u.id);
         this.database.createLfg(u.id, t.id);
-        return message.reply("LFG message created");
+        return message.reply("LFG message created").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
     private createLFGEmbed(type: string, message: string, user: GuildMember) {
         const embed = new EmbedBuilder()
@@ -77,7 +79,10 @@ export class LfgService {
     })
     private async stopLfg(@Context() [message]: SlashCommandContext) {
         if (!this.checkPermissions(message.member as GuildMember)) {
-            return message.reply("You are not authorized to use this command");
+            return message.reply("You are not authorized to use this command").then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+              })
+              .catch(() => {});
         }
         let role = await this.database.getSettingByKey("lfg_role");
         let u = message.member as GuildMember;
@@ -85,18 +90,20 @@ export class LfgService {
             u.roles.remove(role.value);
         }
         let user = await this.database.getLfgForUser(u.id);
-        if(!user) return message.reply("You are not looking for a group");
+        if(!user) return message.reply("You are not looking for a group").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
         let channel = this.client.channels.cache.get(user.threadId) as ThreadChannel;
         if (channel) {
             await channel.delete();
         }
         this.database.deleteLfg(u.id);
-        return message.reply("You are no longer looking for a group");
+        return message.reply("You are no longer looking for a group").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
-
-
-
-
 
     private async checkPermissions(user: GuildMember) {
         let authorized = await this.database.getSettingByKey("lfg_authorized_role");
@@ -127,6 +134,9 @@ export class LfgAdminService {
         await this.database.saveSetting("lfg_authorized_role", options.authorized.id);
         await this.database.saveSetting("lfg_channel", options.channel.id);
         await this.database.saveSetting("lfg_role", options.lfg.id);
-        return message.reply("LFG configuration saved");
+        return message.reply("LFG configuration saved").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
 }

@@ -9,6 +9,9 @@ export class FunService {
         description:"Erethis ... merda!"
     })
     public onErethis(@Context() [message]: TextCommandContext){
-        return message.reply("Erethis ... merda!");
+        return message.reply("Erethis ... merda!").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
 }

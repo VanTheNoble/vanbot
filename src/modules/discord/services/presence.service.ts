@@ -24,7 +24,10 @@ export class PresenceService {
     public async setPresence(@Context() [message]: SlashCommandContext, @Options() options: RoleDto) {
         this.logger.log(`Presence role set to: ${options.role.name}`);
         this.database.saveSetting("presence_role", options.role.id);
-        return message.reply("Presence role set");
+        return message.reply("Presence role set").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
 
     @On("presenceUpdate")

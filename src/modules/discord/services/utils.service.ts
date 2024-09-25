@@ -1,7 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { MessagePayload } from "discord.js";
-import { CommandsService, Context, ContextOf, Once, TextCommand, TextCommandContext } from "necord";
+import { InteractionResponseType, MessagePayload, Utils } from "discord.js";
+import { CommandsService, Context, ContextOf, createCommandGroupDecorator, Once, SlashCommand, SlashCommandContext, Subcommand, TextCommand, TextCommandContext } from "necord";
+export const UtilsCommandDecorator = createCommandGroupDecorator({
+    name: "utils",
+    description: "Utility commands",
+    guilds: [process.env.GUILD_ID],
+    defaultMemberPermissions: ["Administrator", "ManageGuild"],
+});
 
+@UtilsCommandDecorator()
 @Injectable()
 export class UtilsService {
 
@@ -31,6 +38,24 @@ export class UtilsService {
         description: "Ping pong!",
     })
     public onPing(@Context() [message]: TextCommandContext) {
-        message.reply("Pong!");
+        message.reply("Pong!").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
+
+    @Subcommand({
+        name: "clear",
+        description: "Clear messages",
+    })
+    public async clearMessages(@Context() [message]: SlashCommandContext) {
+        let messages = await message.channel.messages.fetch();
+        let m = messages.filter((m) => !m.pinned);
+        await message.channel.bulkDelete(m);
+        return message.reply("Chat cleared").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
+    }
+
 }

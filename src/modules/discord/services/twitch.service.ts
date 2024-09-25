@@ -23,7 +23,7 @@ export const TwitchCommandDecorator = createCommandGroupDecorator({
 export class TwitchService {
 
     private readonly logger = new Logger(TwitchService.name);
-    private authProvider : AppTokenAuthProvider;
+    private authProvider: AppTokenAuthProvider;
     private apiClient: ApiClient;
 
     constructor(
@@ -43,16 +43,22 @@ export class TwitchService {
         name: "add",
         description: "Add a twitch user to the database",
     })
-    public async addTwitch(@Context() [message]: SlashCommandContext, 
+    public async addTwitch(@Context() [message]: SlashCommandContext,
         @Options() options: TwitchProfileDto) {
-        
+
         let u = await this.databaseService.findTwitchUser(options.username);
-        if(u){
-            return message.reply({content: "User already exists",options: {reply: {messageReference: message.id}}});
+        if (u) {
+            return message.reply({ content: "User already exists", options: { reply: { messageReference: message.id } } }).then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+            })
+                .catch(() => { });
         }
-        else{
-            await this.databaseService.addTwitchUser(options.username); 
-            return message.reply("User added");
+        else {
+            await this.databaseService.addTwitchUser(options.username);
+            return message.reply("User added").then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+            })
+                .catch(() => { });
         }
     }
 
@@ -60,14 +66,20 @@ export class TwitchService {
     @Subcommand({
         name: "remove",
         description: "Remove a twitch user from the database",
-    })    
+    })
     public async removeTwitch(@Context() [message]: SlashCommandContext, @Options() options: TwitchProfileDto) {
         let deleted = await this.databaseService.deleteTwitchUser(options.username);
-        if(deleted){
-            return message.reply({ content: "User removed", options: {reply: {messageReference: message.id}}});
+        if (deleted) {
+            return message.reply({ content: "User removed", options: { reply: { messageReference: message.id } } }).then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+            })
+                .catch(() => { });
         }
-        else{
-            return message.reply({content: "User not found",options: {reply: {messageReference: message.id}}});
+        else {
+            return message.reply({ content: "User not found", options: { reply: { messageReference: message.id } } }).then(msg => {
+                setTimeout(() => msg.delete(), 10000)
+            })
+                .catch(() => { });
         }
     }
 
@@ -81,7 +93,10 @@ export class TwitchService {
         users.forEach(u => {
             messageToSend += `${u.channelName}\n`;
         });
-        return message.reply(messageToSend);
+        return message.reply(messageToSend).then(msg => {
+            setTimeout(() => msg.delete(), 30000)
+        })
+            .catch(() => { });;
     }
 
     @Subcommand({
@@ -91,8 +106,11 @@ export class TwitchService {
     public async setTwitchNotification(@Context() [message]: SlashCommandContext, @Options() options: TwitchConfigurationDTO) {
         await this.databaseService.saveSetting("twitch_notification_channel", options.channel.id);
         await this.databaseService.saveSetting("twitch_notification_role", options.role.id);
-       
-        return message.reply("Notification channel set");
+
+        return message.reply("Notification channel set").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+        })
+            .catch(() => { });
     }
 
     @Subcommand({
@@ -101,40 +119,46 @@ export class TwitchService {
     })
     public async checkTwitchCommand(@Context() [message]: SlashCommandContext) {
         this.twitchCheck();
-        return message.reply("Checking twitch users");
+        return message.reply("Checking twitch users").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+        })
+            .catch(() => { });
     }
 
     @Cron("*/5 * * * *")
     public async checkTwitch() {
-        
+
         this.twitchCheck();
     }
 
-    private async twitchCheck(){
+    private async twitchCheck() {
         let users = await this.databaseService.findAllTwitchUsers();
         let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel");
         let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role");
-        for(let user of users){
+        for (let user of users) {
+            this.logger.log(`Checking user ${user.channelName}`);
             this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
-                if(stream){
-                    if(!user.isOnline){
+                if (stream) {
+                    this.logger.log(`Stream found for ${user.channelName} and user is ${user.isOnline}`);
+                    if (!user.isOnline) {
+                        this.logger.log(`user is flagged offline so we can proceed`);
                         const broadcaster = await stream.getUser();
                         user.isOnline = true;
                         let channel = this.client.channels.cache.get(settingsChannel.value) as TextChannel;
                         const emb = this.buildStreamEmbed(stream, broadcaster);
                         let mention = "";
-                        
-                        if(settingsRole){
+
+                        if (settingsRole) {
                             mention = roleMention(settingsRole.value);
                         }
-                        let message = await channel.send({content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb]});
+                        let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
                         user.lastMessage = message.id;
                         this.databaseService.updateTwitchUser(user);
 
                     }
                 }
-                else{
-                    if(user.isOnline){
+                else {
+                    if (user.isOnline) {
                         let channel = this.client.channels.cache.get(settingsChannel.value) as TextChannel;
                         let message = channel.messages.fetch(user.lastMessage);
                         message.then(m => m.delete());
@@ -148,28 +172,28 @@ export class TwitchService {
 
     }
 
-    private buildStreamEmbed(stream: HelixStream, broadcaster: HelixUser){
+    private buildStreamEmbed(stream: HelixStream, broadcaster: HelixUser) {
         const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
-        .setTitle(`${stream.title}`)
-        .setThumbnail(`${broadcaster.profilePictureUrl}`)
-        .setURL(`https://twitch.tv/${broadcaster.name}`)
-        .setImage(`${stream.getThumbnailUrl(800,600)}`)
-        .addFields(
-            {
-                name: "Categoria",
-                value: stream.gameName,
-            },
-            {
-                name: 'View',
-                value: `${stream.viewers}`,
-            }
-        )
+            .setColor(0x0099FF)
+            .setTitle(`${stream.title}`)
+            .setThumbnail(`${broadcaster.profilePictureUrl}`)
+            .setURL(`https://twitch.tv/${broadcaster.name}`)
+            .setImage(`${stream.getThumbnailUrl(800, 600)}`)
+            .addFields(
+                {
+                    name: "Categoria",
+                    value: stream.gameName,
+                },
+                {
+                    name: 'View',
+                    value: `${stream.viewers}`,
+                }
+            )
         return embed;
     }
 
-    
 
 
-    
+
+
 }

@@ -62,7 +62,10 @@ export class WelcomeService {
         await this.databaseService.saveSetting("welcome_message", options.welcome);
         await this.databaseService.saveSetting("welcome_channel", options.channel.id);
         await this.databaseService.saveSetting("goodbye_message", options.goodbye);
-        return message.reply("Welcome message configured");
+        return message.reply("Welcome message configured").then(msg => {
+            setTimeout(() => msg.delete(), 10000)
+          })
+          .catch(() => {});
     }
 
     @On("guildMemberEntered")
