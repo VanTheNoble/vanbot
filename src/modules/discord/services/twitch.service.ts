@@ -7,6 +7,7 @@ import { DatabaseService } from "./database.service";
 import { AppTokenAuthProvider } from "@twurple/auth";
 import { ApiClient, HelixStream, HelixUser } from "@twurple/api";
 import { UtilsService } from "./utils.service";
+import { TwitchProfile } from "../entities/twitch.entity";
 export const TwitchCommandDecorator = createCommandGroupDecorator({
     name: "twitch",
     description: "Twitch commands",
@@ -85,11 +86,10 @@ export class TwitchService {
     })
     public async listTwitch(@Context() [message]: SlashCommandContext) {
         let users = await this.databaseService.findAllTwitchUsersForGuild(message.guild.id);
-        let messageToSend = "**Twitch users:**\n";
-        users.forEach(u => {
-            messageToSend += `${u.channelName}\n`;
-        });
-        return message.reply(messageToSend).then(msg => {
+        const emb = new EmbedBuilder().setTitle("Twitch users")
+            .setColor(0x0099FF)
+            .setDescription(`List of all twitch users\n${users.map(u => `- ${u.channelName}`).join("\n")}`);
+        return message.reply({embeds: [emb]}).then(msg => {
             setTimeout(() => msg.delete(), 30000)
         })
             .catch(() => { });;
@@ -121,7 +121,7 @@ export class TwitchService {
             .catch(() => { });
     }
 
-    @Cron("*/5 * * * *")
+    @Cron("0 */5 * * * *")
     public async checkTwitch() {
 
         this.twitchCheck();
@@ -131,58 +131,11 @@ export class TwitchService {
         let users = await this.databaseService.findAllTwitchUsersForGuild(guild);
         let g = (await this.databaseService.getGuilds()).filter(g => g.guildId == guild)[0];
         if (!g) return;
-        let guildSettings = {};
-        this.logger.log(`Getting settings for guild ${g.guildId}`);
-        let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", g.guildId);
-        let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role", g.guildId);
-        if(!settingsChannel || !settingsRole){
-            this.logger.log(`Settings not found for guild ${g.guildId}`);
-            return;
-        };
-        guildSettings[g.guildId] = {
-            channel: settingsChannel.value,
-            role: settingsRole.value
-        };
+        const settings = await this.getSettingsForGuild(guild);
+        if(!settings) return;
         
         for (let user of users) {
-            const settings = guildSettings[user.guild];
-            if(!settings){ 
-                this.logger.log(`Settings not found for guild ${user.guild}`);    
-                continue;
-            }
-            this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
-                let guild = this.client.guilds.cache.get(user.guild);
-                    if(!guild) return;
-                    let notification = await this.databaseService.getNotification(user.guild, user.id);
-                if (stream) {
-                    
-                    if (!notification) {
-                        this.logger.log(`user is flagged offline so we can proceed`);
-                        const broadcaster = await stream.getUser();
-                        
-                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
-                        const emb = this.buildStreamEmbed(stream, broadcaster);
-                        let mention = "";
-
-                        if (settings.role) {
-                            mention = roleMention(settings.role);
-                        }
-                        let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
-                        this.databaseService.createNotification(message.id,user.guild,  user.id);
-                        this.databaseService.updateTwitchUser(user);
-                    }
-                }
-                else {
-                    if (notification) {
-                        
-                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
-                        let message = channel.messages.fetch(notification.message);
-                        message.then(m => m.delete());
-                        this.databaseService.deleteNotification(user.guild, user.id);
-                        this.databaseService.updateTwitchUser(user);
-                    }
-                }
-            });
+            this.completeCheck(settings, user);
         }
 
     }
@@ -192,60 +145,69 @@ export class TwitchService {
         let guilds = await this.databaseService.getGuilds();
         let guildSettings = {};
         for(let g of guilds){
-            this.logger.log(`Getting settings for guild ${g.guildId}`);
-            let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", g.guildId);
-            let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role", g.guildId);
-            if(!settingsChannel || !settingsRole){
-                this.logger.log(`Settings not found for guild ${g.guildId}`);
-                continue;
-            };
-            guildSettings[g.guildId] = {
-                channel: settingsChannel.value,
-                role: settingsRole.value
-            };
+            let s = await this.getSettingsForGuild(g.guildId);
+            if(!s) continue;
+            guildSettings[g.guildId] = s;
         }
-        console.log(JSON.stringify(guildSettings));
         for (let user of users) {
             const settings = guildSettings[user.guild];
             if(!settings){ 
                 this.logger.log(`Settings not found for guild ${user.guild}`);    
                 continue;
             }
-            this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
-                let guild = this.client.guilds.cache.get(user.guild);
-                    if(!guild) return;
-                    let notification = await this.databaseService.getNotification(user.guild, user.id);
-                if (stream) {
-                    
-                    if (!notification) {
-                        this.logger.log(`user is flagged offline so we can proceed`);
-                        const broadcaster = await stream.getUser();
-                        
-                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
-                        const emb = this.buildStreamEmbed(stream, broadcaster);
-                        let mention = "";
-
-                        if (settings.role) {
-                            mention = roleMention(settings.role);
-                        }
-                        let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
-                        this.databaseService.createNotification(message.id,user.guild,  user.id);
-                        this.databaseService.updateTwitchUser(user);
-                    }
-                }
-                else {
-                    if (notification) {
-                        
-                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
-                        let message = channel.messages.fetch(notification.message);
-                        message.then(m => m.delete());
-                        this.databaseService.deleteNotification(user.guild, user.id);
-                        this.databaseService.updateTwitchUser(user);
-                    }
-                }
-            });
+            this.completeCheck(settings, user);
         }
 
+    }
+
+    private async getSettingsForGuild(guild: string){
+        let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", guild);
+        let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role", guild);
+        if(!settingsChannel || !settingsRole){
+            this.logger.log(`Settings not found for guild ${guild}`);
+            return undefined;
+        };
+        return {
+            channel: settingsChannel.value,
+            role: settingsRole.value
+        };
+    }
+
+    private async completeCheck(settings: any, user: TwitchProfile){
+
+        this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
+            let guild = this.client.guilds.cache.get(user.guild);
+                if(!guild) return;
+                let notification = await this.databaseService.getNotification(user.guild, user.id);
+            if (stream) {
+                
+                if (!notification) {
+                    this.logger.log(`user is flagged offline so we can proceed`);
+                    const broadcaster = await stream.getUser();
+                    
+                    let channel = guild.channels.cache.get(settings.channel) as TextChannel;
+                    const emb = this.buildStreamEmbed(stream, broadcaster);
+                    let mention = "";
+
+                    if (settings.role) {
+                        mention = roleMention(settings.role);
+                    }
+                    let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
+                    this.databaseService.createNotification(message.id,user.guild,  user.id);
+                    this.databaseService.updateTwitchUser(user);
+                }
+            }
+            else {
+                if (notification) {
+                    
+                    let channel = guild.channels.cache.get(settings.channel) as TextChannel;
+                    let message = channel.messages.fetch(notification.message);
+                    message.then(m => m.delete());
+                    this.databaseService.deleteNotification(user.guild, user.id);
+                    this.databaseService.updateTwitchUser(user);
+                }
+            }
+        });
     }
 
     private buildStreamEmbed(stream: HelixStream, broadcaster: HelixUser) {
