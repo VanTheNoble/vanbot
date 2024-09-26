@@ -10,4 +10,6 @@ export class LFG{
     createdAt: Date = new Date();
     @Column()
     threadId: string;
+    @Column()
+    guild: string;
 }

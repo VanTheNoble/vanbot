@@ -1,10 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { TwitchProfile } from "../entities/twitch.entity";
-import { In, Repository } from "typeorm";
-import { Arguments, Context, ContextOf, createCommandGroupDecorator, On, Options, SlashCommand, SlashCommandContext, Subcommand, TextCommand, TextCommandContext } from "necord";
-import { ChannelDto, TwitchConfigurationDTO, TwitchProfileDto } from "../models/slash.dtos";
-import { Settings } from "../entities/discord.entity";
+import { Context, createCommandGroupDecorator, On, Options, SlashCommand, SlashCommandContext, Subcommand, TextCommand, TextCommandContext } from "necord";
+import { TwitchConfigurationDTO, TwitchProfileDto } from "../models/slash.dtos";
 import { Cron } from "@nestjs/schedule";
 import { ChannelManager, Client, EmbedBuilder, roleMention, TextChannel } from "discord.js";
 import { DatabaseService } from "./database.service";
@@ -14,7 +10,7 @@ import { UtilsService } from "./utils.service";
 export const TwitchCommandDecorator = createCommandGroupDecorator({
     name: "twitch",
     description: "Twitch commands",
-    guilds: [process.env.GUILD_ID],
+    guilds: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
     defaultMemberPermissions: ["Administrator", "ManageGuild"],
 });
 
@@ -46,7 +42,7 @@ export class TwitchService {
     public async addTwitch(@Context() [message]: SlashCommandContext,
         @Options() options: TwitchProfileDto) {
 
-        let u = await this.databaseService.findTwitchUser(options.username);
+        let u = await this.databaseService.findTwitchUser(options.username, message.guild.id);
         if (u) {
             return message.reply({ content: "User already exists", options: { reply: { messageReference: message.id } } }).then(msg => {
                 setTimeout(() => msg.delete(), 10000)
@@ -54,7 +50,7 @@ export class TwitchService {
                 .catch(() => { });
         }
         else {
-            await this.databaseService.addTwitchUser(options.username);
+            await this.databaseService.addTwitchUser(options.username, message.guild.id);
             return message.reply("User added").then(msg => {
                 setTimeout(() => msg.delete(), 10000)
             })
@@ -68,7 +64,7 @@ export class TwitchService {
         description: "Remove a twitch user from the database",
     })
     public async removeTwitch(@Context() [message]: SlashCommandContext, @Options() options: TwitchProfileDto) {
-        let deleted = await this.databaseService.deleteTwitchUser(options.username);
+        let deleted = await this.databaseService.deleteTwitchUser(options.username, message.guild.id);
         if (deleted) {
             return message.reply({ content: "User removed", options: { reply: { messageReference: message.id } } }).then(msg => {
                 setTimeout(() => msg.delete(), 10000)
@@ -88,7 +84,7 @@ export class TwitchService {
         description: "List all twitch users",
     })
     public async listTwitch(@Context() [message]: SlashCommandContext) {
-        let users = await this.databaseService.findAllTwitchUsers();
+        let users = await this.databaseService.findAllTwitchUsersForGuild(message.guild.id);
         let messageToSend = "**Twitch users:**\n";
         users.forEach(u => {
             messageToSend += `${u.channelName}\n`;
@@ -104,8 +100,8 @@ export class TwitchService {
         description: "Configure twitch notifications",
     })
     public async setTwitchNotification(@Context() [message]: SlashCommandContext, @Options() options: TwitchConfigurationDTO) {
-        await this.databaseService.saveSetting("twitch_notification_channel", options.channel.id);
-        await this.databaseService.saveSetting("twitch_notification_role", options.role.id);
+        await this.databaseService.saveSetting("twitch_notification_channel", options.channel.id, message.guild.id);
+        await this.databaseService.saveSetting("twitch_notification_role", options.role.id, message.guild.id);
 
         return message.reply("Notification channel set").then(msg => {
             setTimeout(() => msg.delete(), 10000)
@@ -118,7 +114,7 @@ export class TwitchService {
         description: "Check twitch users",
     })
     public async checkTwitchCommand(@Context() [message]: SlashCommandContext) {
-        this.twitchCheck();
+        this.checkForGuild(message.guild.id);
         return message.reply("Checking twitch users").then(msg => {
             setTimeout(() => msg.delete(), 10000)
         })
@@ -131,39 +127,119 @@ export class TwitchService {
         this.twitchCheck();
     }
 
-    private async twitchCheck() {
-        let users = await this.databaseService.findAllTwitchUsers();
-        let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel");
-        let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role");
+    private async checkForGuild(guild: string){
+        let users = await this.databaseService.findAllTwitchUsersForGuild(guild);
+        let g = (await this.databaseService.getGuilds()).filter(g => g.guildId == guild)[0];
+        if (!g) return;
+        let guildSettings = {};
+        this.logger.log(`Getting settings for guild ${g.guildId}`);
+        let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", g.guildId);
+        let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role", g.guildId);
+        if(!settingsChannel || !settingsRole){
+            this.logger.log(`Settings not found for guild ${g.guildId}`);
+            return;
+        };
+        guildSettings[g.guildId] = {
+            channel: settingsChannel.value,
+            role: settingsRole.value
+        };
+        
         for (let user of users) {
-            this.logger.log(`Checking user ${user.channelName}`);
+            const settings = guildSettings[user.guild];
+            if(!settings){ 
+                this.logger.log(`Settings not found for guild ${user.guild}`);    
+                continue;
+            }
             this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
+                let guild = this.client.guilds.cache.get(user.guild);
+                    if(!guild) return;
+                    let notification = await this.databaseService.getNotification(user.guild, user.id);
                 if (stream) {
-                    this.logger.log(`Stream found for ${user.channelName} and user is ${user.isOnline}`);
-                    if (!user.isOnline) {
+                    
+                    if (!notification) {
                         this.logger.log(`user is flagged offline so we can proceed`);
                         const broadcaster = await stream.getUser();
-                        user.isOnline = true;
-                        let channel = this.client.channels.cache.get(settingsChannel.value) as TextChannel;
+                        
+                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
                         const emb = this.buildStreamEmbed(stream, broadcaster);
                         let mention = "";
 
-                        if (settingsRole) {
-                            mention = roleMention(settingsRole.value);
+                        if (settings.role) {
+                            mention = roleMention(settings.role);
                         }
                         let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
-                        user.lastMessage = message.id;
+                        this.databaseService.createNotification(message.id,user.guild,  user.id);
                         this.databaseService.updateTwitchUser(user);
-
                     }
                 }
                 else {
-                    if (user.isOnline) {
-                        let channel = this.client.channels.cache.get(settingsChannel.value) as TextChannel;
-                        let message = channel.messages.fetch(user.lastMessage);
+                    if (notification) {
+                        
+                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
+                        let message = channel.messages.fetch(notification.message);
                         message.then(m => m.delete());
-                        user.isOnline = false;
-                        user.lastMessage = "";
+                        this.databaseService.deleteNotification(user.guild, user.id);
+                        this.databaseService.updateTwitchUser(user);
+                    }
+                }
+            });
+        }
+
+    }
+
+    private async twitchCheck() {
+        let users = await this.databaseService.findAllTwitchUsers();
+        let guilds = await this.databaseService.getGuilds();
+        let guildSettings = {};
+        for(let g of guilds){
+            this.logger.log(`Getting settings for guild ${g.guildId}`);
+            let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", g.guildId);
+            let settingsRole = await this.databaseService.getSettingByKey("twitch_notification_role", g.guildId);
+            if(!settingsChannel || !settingsRole){
+                this.logger.log(`Settings not found for guild ${g.guildId}`);
+                continue;
+            };
+            guildSettings[g.guildId] = {
+                channel: settingsChannel.value,
+                role: settingsRole.value
+            };
+        }
+        console.log(JSON.stringify(guildSettings));
+        for (let user of users) {
+            const settings = guildSettings[user.guild];
+            if(!settings){ 
+                this.logger.log(`Settings not found for guild ${user.guild}`);    
+                continue;
+            }
+            this.apiClient.streams.getStreamByUserName(user.channelName).then(async stream => {
+                let guild = this.client.guilds.cache.get(user.guild);
+                    if(!guild) return;
+                    let notification = await this.databaseService.getNotification(user.guild, user.id);
+                if (stream) {
+                    
+                    if (!notification) {
+                        this.logger.log(`user is flagged offline so we can proceed`);
+                        const broadcaster = await stream.getUser();
+                        
+                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
+                        const emb = this.buildStreamEmbed(stream, broadcaster);
+                        let mention = "";
+
+                        if (settings.role) {
+                            mention = roleMention(settings.role);
+                        }
+                        let message = await channel.send({ content: `Hey ${mention}! ${broadcaster.displayName} è live!`, embeds: [emb] });
+                        this.databaseService.createNotification(message.id,user.guild,  user.id);
+                        this.databaseService.updateTwitchUser(user);
+                    }
+                }
+                else {
+                    if (notification) {
+                        
+                        let channel = guild.channels.cache.get(settings.channel) as TextChannel;
+                        let message = channel.messages.fetch(notification.message);
+                        message.then(m => m.delete());
+                        this.databaseService.deleteNotification(user.guild, user.id);
                         this.databaseService.updateTwitchUser(user);
                     }
                 }

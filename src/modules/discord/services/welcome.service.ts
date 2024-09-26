@@ -7,7 +7,7 @@ import { WelcomeCardService } from "../utilities/WelcomeCard.service";
 export const WelcomeSlashGroup = createCommandGroupDecorator({
     name: "welcome",
     description: "Welcome commands",
-    guilds: [process.env.GUILD_ID],
+    guilds: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
     defaultMemberPermissions: ["Administrator", "ManageGuild"],
 });
 
@@ -28,7 +28,7 @@ export class WelcomeService {
         description: "Activate the welcome message",
     })
     public async activateWelcome(@Context() [message]: SlashCommandContext) {
-        await this.databaseService.saveSetting("welcome_active", "true");
+        await this.databaseService.saveSetting("welcome_active", "true", message.guild.id);
         return message.reply("Welcome message activated");
     }
 
@@ -37,7 +37,7 @@ export class WelcomeService {
         description: "Deactivate the welcome message",
     })
     public async deactivateWelcome(@Context() [message]: SlashCommandContext) {
-        await this.databaseService.saveSetting("welcome_active", "false");
+        await this.databaseService.saveSetting("welcome_active", "false", message.guild.id);
         return message.reply("Welcome message deactivated");
     }
 
@@ -59,9 +59,9 @@ export class WelcomeService {
         description: "Configure the welcome message",
     })
     public async configureWelcome(@Context() [message]: SlashCommandContext, @Options() options: WelcomeConfigurationDTO) {
-        await this.databaseService.saveSetting("welcome_message", options.welcome);
-        await this.databaseService.saveSetting("welcome_channel", options.channel.id);
-        await this.databaseService.saveSetting("goodbye_message", options.goodbye);
+        await this.databaseService.saveSetting("welcome_message", options.welcome, message.guild.id);
+        await this.databaseService.saveSetting("welcome_channel", options.channel.id, message.guild.id);
+        await this.databaseService.saveSetting("goodbye_message", options.goodbye, message.guild.id);
         return message.reply("Welcome message configured").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
@@ -70,7 +70,7 @@ export class WelcomeService {
 
     @On("guildMemberEntered")
     public async onGuildMemberEntered(@Context() [member]: ContextOf<"guildMemberEntered">) {
-        let active = await this.databaseService.getSettingByKey("welcome_active");
+        let active = await this.databaseService.getSettingByKey("welcome_active", member.guild.id);
         if(!(active && active.value === "true")){
             return;
         }
@@ -80,7 +80,7 @@ export class WelcomeService {
 
     @On("guildMemberRemove")
     public async onGuildMemberRemove(@Context() [member]: ContextOf<"guildMemberRemove">) {
-        let active = await this.databaseService.getSettingByKey("welcome_active");
+        let active = await this.databaseService.getSettingByKey("welcome_active" , member.guild.id);
         if(!(active && active.value === "true")){
             return;
         }
@@ -88,8 +88,8 @@ export class WelcomeService {
     }
 
     private async welcomeUser(member: GuildMember){
-        let message = await this.databaseService.getSettingByKey("welcome_message");
-        let channel = await this.databaseService.getSettingByKey("welcome_channel");
+        let message = await this.databaseService.getSettingByKey("welcome_message", member.guild.id);
+        let channel = await this.databaseService.getSettingByKey("welcome_channel", member.guild.id);
         if(message && channel){
             let c = this.channels.resolve(channel.value) as TextChannel;
             if(c){
@@ -100,8 +100,8 @@ export class WelcomeService {
     }
 
     private async goodbyeUser(member: GuildMember | PartialGuildMember){
-        let message = await this.databaseService.getSettingByKey("goodbye_message");
-        let channel = await this.databaseService.getSettingByKey("welcome_channel");
+        let message = await this.databaseService.getSettingByKey("goodbye_message", member.guild.id);
+        let channel = await this.databaseService.getSettingByKey("welcome_channel", member.guild.id);
         if(message && channel){
             let c = this.channels.resolve(channel.value) as TextChannel;
             if(c){

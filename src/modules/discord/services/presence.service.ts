@@ -6,7 +6,7 @@ import { ActivityType, Client } from "discord.js";
 export const PresenceSlashGroup = createCommandGroupDecorator({
     name: "presence",
     description: "Presence commands",
-    guilds: [process.env.GUILD_ID],
+    guilds: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
     defaultMemberPermissions: ["Administrator", "ManageGuild"],
 });
 
@@ -23,7 +23,7 @@ export class PresenceService {
     })
     public async setPresence(@Context() [message]: SlashCommandContext, @Options() options: RoleDto) {
         this.logger.log(`Presence role set to: ${options.role.name}`);
-        this.database.saveSetting("presence_role", options.role.id);
+        this.database.saveSetting("presence_role", options.role.id, message.guild.id);
         return message.reply("Presence role set").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
@@ -33,7 +33,7 @@ export class PresenceService {
     @On("presenceUpdate")
     public async onPresenceUpdate(@Context() [oldPresence, newPresence]: ContextOf<"presenceUpdate">) {
         if(newPresence.member.user.bot) return;
-        let role = await this.database.getSettingByKey("presence_role");
+        let role = await this.database.getSettingByKey("presence_role", newPresence.guild.id);
         if(!role) return;
         let streaming = false;
         for(let activity of newPresence.activities){

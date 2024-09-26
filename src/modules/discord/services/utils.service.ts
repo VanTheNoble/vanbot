@@ -4,7 +4,7 @@ import { CommandsService, Context, ContextOf, createCommandGroupDecorator, Once,
 export const UtilsCommandDecorator = createCommandGroupDecorator({
     name: "utils",
     description: "Utility commands",
-    guilds: [process.env.GUILD_ID],
+    guilds: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
     defaultMemberPermissions: ["Administrator", "ManageGuild"],
 });
 
@@ -28,7 +28,7 @@ export class UtilsService {
     public checkCommands(){
         let cmd = this.commandService.getCommands();
         cmd.forEach((c) => {
-            c.setGuilds([process.env.GUILD_ID]);
+            c.setGuilds([process.env.GUILD_ID, process.env.VAN_GUILD_ID]);
         });
         this.commandService.registerAllCommands();
     }

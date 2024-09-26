@@ -1,13 +1,11 @@
 import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
 
-@Entity({name: "settings"})
-export class Settings {
+@Entity({name: "guild"})
+export class GuildEntity{
     @PrimaryGeneratedColumn()
     id: number;
     @Column()
-    guild: string;
+    guildId: string; 
     @Column()
-    key: string;
-    @Column()
-    value: string;
+    guildName: string;
 }

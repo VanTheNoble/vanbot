@@ -1,5 +1,5 @@
 import { Module } from "@nestjs/common";
-import { ActivityType, IntentsBitField } from "discord.js";
+import { ActivityType, Guild, IntentsBitField } from "discord.js";
 import { NecordModule } from "necord";
 import { UtilsService } from "./services/utils.service";
 import { FunService } from "./services/fun.service";
@@ -15,14 +15,16 @@ import { PresenceService } from "./services/presence.service";
 import { WelcomeCardService } from "./utilities/WelcomeCard.service";
 import { LFG } from "./entities/lfg.entity";
 import { LfgAdminService, LfgService } from "./services/lfg.service";
+import { Notifications } from "./entities/notifications.entity";
+import { GuildEntity } from "./entities/guild.entity";
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([TwitchProfile, Settings, LFG]),
+        TypeOrmModule.forFeature([TwitchProfile, Settings, LFG, Notifications, GuildEntity]),
         NecordModule.forRoot({
             token: process.env.DISCORD_TOKEN,
             prefix: "v!",
-            development: [process.env.GUILD_ID],
+            development: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
             intents: [
                 IntentsBitField.Flags.Guilds, 
                 IntentsBitField.Flags.GuildMessages,

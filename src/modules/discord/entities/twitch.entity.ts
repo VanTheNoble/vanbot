@@ -8,9 +8,7 @@ export class TwitchProfile {
     @PrimaryGeneratedColumn()
     id: number;
     @Column()
+    guild: string;
+    @Column()
     channelName: string;
-    @Column()
-    isOnline: boolean;
-    @Column()
-    lastMessage: string;
 }

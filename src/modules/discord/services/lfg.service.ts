@@ -7,7 +7,7 @@ import { LfgInterceptor } from "../interceptors/lfg.interceptor";
 export const LfgSlashGroup = createCommandGroupDecorator({
     name: "lfg",
     description: "LFG commands",
-    guilds: [process.env.GUILD_ID],
+    guilds: [process.env.GUILD_ID, process.env.VAN_GUILD_ID],
 });
 
 @LfgSlashGroup()
@@ -31,8 +31,8 @@ export class LfgService {
               })
               .catch(() => {});
         }
-        let role = await this.database.getSettingByKey("lfg_role");
-        let channel = await this.database.getSettingByKey("lfg_channel");
+        let role = await this.database.getSettingByKey("lfg_role", message.guild.id);
+        let channel = await this.database.getSettingByKey("lfg_channel", message.guild.id);
         let u = message.member as GuildMember;
         if (!u.roles.cache.has(role.value)) {
             u.roles.add(role.value);
@@ -50,7 +50,7 @@ export class LfgService {
         let t = await channelObj.threads.create(forumMessage);
         t.setAppliedTags([tag.id]);
         t.members.add(u.id);
-        this.database.createLfg(u.id, t.id);
+        this.database.createLfg(u.id, t.id, message.guild.id);
         return message.reply("LFG message created").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
@@ -84,12 +84,12 @@ export class LfgService {
               })
               .catch(() => {});
         }
-        let role = await this.database.getSettingByKey("lfg_role");
+        let role = await this.database.getSettingByKey("lfg_role", message.guild.id);
         let u = message.member as GuildMember;
         if (u.roles.cache.has(role.value)) {
             u.roles.remove(role.value);
         }
-        let user = await this.database.getLfgForUser(u.id);
+        let user = await this.database.getLfgForUser(u.id, message.guild.id);
         if(!user) return message.reply("You are not looking for a group").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
@@ -98,7 +98,7 @@ export class LfgService {
         if (channel) {
             await channel.delete();
         }
-        this.database.deleteLfg(u.id);
+        this.database.deleteLfg(u.id, message.guild.id);
         return message.reply("You are no longer looking for a group").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
@@ -106,7 +106,7 @@ export class LfgService {
     }
 
     private async checkPermissions(user: GuildMember) {
-        let authorized = await this.database.getSettingByKey("lfg_authorized_role");
+        let authorized = await this.database.getSettingByKey("lfg_authorized_role", user.guild.id);
         if (!authorized) return false;
         return user.roles.cache.has(authorized.value);
 
@@ -131,9 +131,9 @@ export class LfgAdminService {
     })
     public async configureLfg(@Context() [message]: SlashCommandContext, @Options() options: LFGConfigurationDTO) {
 
-        await this.database.saveSetting("lfg_authorized_role", options.authorized.id);
-        await this.database.saveSetting("lfg_channel", options.channel.id);
-        await this.database.saveSetting("lfg_role", options.lfg.id);
+        await this.database.saveSetting("lfg_authorized_role", options.authorized.id, message.guild.id);
+        await this.database.saveSetting("lfg_channel", options.channel.id, message.guild.id);
+        await this.database.saveSetting("lfg_role", options.lfg.id, message.guild.id);
         return message.reply("LFG configuration saved").then(msg => {
             setTimeout(() => msg.delete(), 10000)
           })
