@@ -31,6 +31,7 @@ export class TwitchService {
     ) {
         this.authProvider = new AppTokenAuthProvider(process.env.TWITCH_CLIENT, process.env.TWITCH_SECRET);
         this.apiClient = new ApiClient({ authProvider: this.authProvider });
+        
         setTimeout(() => {
             this.utilsService.registerCommands();
         }, 10000);
@@ -157,8 +158,8 @@ export class TwitchService {
             }
             this.completeCheck(settings, user);
         }
-
     }
+
 
     private async getSettingsForGuild(guild: string){
         let settingsChannel = await this.databaseService.getSettingByKey("twitch_notification_channel", guild);

@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { TwitchModule } from './modules/twitch/twitch.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { join } from 'path';
       synchronize: true,
     }),
     DiscordModule,
+    TwitchModule,
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'public'),
     })
